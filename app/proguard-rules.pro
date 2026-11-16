@@ -1,0 +1,4 @@
+-keepattributes *Annotation*, InnerClasses
+-dontnote kotlinx.serialization.**
+-keepclassmembers class dev.tvlauncher.** { *** Companion; }
+-keepclasseswithmembers class dev.tvlauncher.** { kotlinx.serialization.KSerializer serializer(...); }
