@@ -29,8 +29,9 @@ Installing does not change the Home button. The stock launcher keeps priority un
 Each profile has its own wallpaper. Choose it in **Launcher settings > Wallpaper**: six presets (Ink, Raised Ink,
 Iris dusk, Night gradient, and the bundled photos Alpine lake and Night sky) plus **From TV storage** for your own
 pictures. Choosing one shows a preview over a mock Home; **Apply wallpaper** saves it for the current profile and
-**Cancel** keeps the old one. Photos get a 70% black scrim and Home draws an opaque reading surface over them, so
-text is always readable. Screens without a sidebar show plain Ink instead of a photo.
+**Cancel** keeps the old one. Photos get a 70% black scrim so text stays readable and the picture shows through behind the content (the Figma
+design has an opaque panel there; it was left out on purpose). Screens without a sidebar show plain Ink instead
+of a photo.
 
 The bundled photos are the two sample images from the Figma design (`docs/design-spec/wallpapers/`). The design
 file describes them as Unsplash images; their license and attribution have not been checked.

@@ -346,6 +346,7 @@ private fun Home(
                         tiles = tiles,
                         style = style,
                         network = network,
+                        homePresses = homePresses,
                         reorder = reorder?.let { ReorderInfo(it.row.id, it.pkg, it.name) },
                         actions = HomeActions(
                             open = ::open,

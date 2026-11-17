@@ -53,7 +53,7 @@ adb -s <tv-ip>:5555 shell am start -n dev.tvlauncher/.MainActivity
 - [ ] Navigation sounds (per profile): on, a click plays when focus moves; off, silence.
 - [ ] On launch: "Ask who's watching" shows the picker at start (`am force-stop dev.tvlauncher`, then start).
 - [ ] Wallpaper: six presets with check on the current one; OK shows the Home preview; Apply saves, Cancel does not.
-- [ ] Photo wallpapers: scrim plus solid reading surface, text readable. From TV storage lists pushed images.
+- [ ] Photo wallpapers: 70% scrim with the picture showing through, text readable. From TV storage lists pushed images.
 - [ ] Dim at night: cover the light sensor (or wait for night); the palette darkens and recovers without flicker.
 - [ ] Focus style cycles Outline / Scale / Glow.
 

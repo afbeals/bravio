@@ -8,8 +8,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -114,8 +112,8 @@ internal val DUSK = Brush.horizontalGradient(listOf(Color(0xFFC2ABF5), Color(0xF
 internal val NIGHT = Brush.verticalGradient(listOf(Color(0xFF3A2F55), Color(0xFF0B0910)))
 
 /**
- * The profile's wallpaper. Pictures get a 70 percent black scrim; with [WallpaperSurface.Reading] an opaque
- * surface also covers the content area (x 416, y 54, 1408 x 972 design px) so text never sits on a photo.
+ * The profile's wallpaper. Pictures get a 70 percent black scrim and show through behind the content (the
+ * Figma design adds an opaque reading surface there; it was left out on purpose so the picture stays visible).
  * Screens without a sidebar pass [WallpaperSurface.Full] and show plain Ink instead of a picture.
  */
 @Composable
@@ -146,9 +144,6 @@ fun WallpaperLayer(id: String, surface: WallpaperSurface) {
                     file?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
                 }
                 Box(Modifier.fillMaxSize().background(Color(if (surface == WallpaperSurface.ScrimOnly) 0xCC000000 else 0xB3000000)))
-                if (surface == WallpaperSurface.Reading) {
-                    Box(Modifier.offset(px(416), px(54)).size(px(1408), px(972)).background(c.bg))
-                }
             }
             preset.kind == WallpaperKind.Raised -> Box(Modifier.fillMaxSize().background(c.panel))
             preset.kind == WallpaperKind.Dusk -> Box(Modifier.fillMaxSize().background(DUSK))

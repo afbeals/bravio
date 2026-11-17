@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.LocalTextStyle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.darkColorScheme
@@ -165,6 +166,7 @@ fun InkTheme(dim: Boolean, content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalInkColors provides c) {
         MaterialTheme(colorScheme = scheme) {
             CompositionLocalProvider(
+                LocalContentColor provides c.text,
                 LocalTextStyle provides LocalTextStyle.current.merge(TextStyle(fontFamily = InterFamily, color = c.text)),
             ) {
                 content()

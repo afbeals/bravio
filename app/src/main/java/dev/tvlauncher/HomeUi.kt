@@ -86,6 +86,7 @@ fun HomeContent(
     style: String,
     network: NetworkState,
     reorder: ReorderInfo?,
+    homePresses: Int,
     actions: HomeActions,
 ) {
     val listState = rememberLazyListState()
@@ -96,7 +97,8 @@ fun HomeContent(
     var focusedIndex by remember { mutableStateOf<Int?>(null) }
     var longName by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) {
+    // Also when Home is pressed while the launcher is already showing, so focus never ends up on a stray button.
+    LaunchedEffect(homePresses) {
         if (rows.isEmpty()) emptyFocus.requestFocusWhenReady() else rowFocus.first().requestFocusWhenReady()
     }
 
