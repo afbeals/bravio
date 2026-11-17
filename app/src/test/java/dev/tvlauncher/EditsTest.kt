@@ -32,28 +32,77 @@ class EditsTest {
     }
 
     @Test
-    fun wallpaperCyclesThroughPresetsAndOnlyOffersTheImageWhenItExists() {
-        val ids = WALLPAPER_PRESETS.map { it.id }
-        var p = base.copy(wallpaper = ids.last())
-        assertEquals(ids.first(), p.nextWallpaper(imageAvailable = false).wallpaper)
-        assertEquals(WALLPAPER_IMAGE, p.nextWallpaper(imageAvailable = true).wallpaper)
-        p = base.copy(wallpaper = WALLPAPER_IMAGE)
-        assertEquals(ids.first(), p.nextWallpaper(imageAvailable = true).wallpaper)
+    fun wallpaperPresetsMatchTheDesignAndUnknownIdsFallBackToInk() {
+        assertEquals(
+            listOf("Ink", "Raised Ink", "Iris dusk", "Night gradient", "Alpine lake", "Night sky"),
+            WALLPAPER_PRESETS.map { it.name },
+        )
+        assertEquals(WALLPAPER_PRESETS.first(), wallpaperPreset("midnight"))
+        assertEquals("Alpine lake", wallpaperName("alpine"))
     }
 
     @Test
-    fun missingImageOrUnknownWallpaperFallsBackToTheFirstPreset() {
-        assertEquals(WALLPAPER_PRESETS.first(), wallpaperPreset("gone"))
-        assertEquals(WALLPAPER_PRESETS.first().id, base.copy(wallpaper = WALLPAPER_IMAGE).nextWallpaper(false).wallpaper)
+    fun onlyPicturesGetTheScrimAndReadingSurface() {
+        assertTrue(isPhotoWallpaper("alpine"))
+        assertTrue(isPhotoWallpaper(fileWallpaperId("holiday.jpg")))
+        assertTrue(isPhotoWallpaper(WALLPAPER_IMAGE))
+        assertFalse(isPhotoWallpaper("ink"))
+        assertFalse(isPhotoWallpaper("dusk"))
     }
 
     @Test
-    fun addProfileMakesAUniqueActiveProfile() {
+    fun imageNamesMustBePlainNamesOfImageFiles() {
+        assertTrue(isSafeImageName("Family photo.PNG"))
+        assertFalse(isSafeImageName("../config.json"))
+        assertFalse(isSafeImageName("a/b.jpg"))
+        assertFalse(isSafeImageName("notes.txt"))
+        assertFalse(isSafeImageName(".."))
+        assertEquals("holiday.jpg", wallpaperName(fileWallpaperId("holiday.jpg")))
+    }
+
+    @Test
+    fun addProfileMakesAnActiveProfileWithTheGivenNameAndAUniqueId() {
         val config = Config(profiles = listOf(Profile("default", "Default"), Profile("p3", "Taken")))
-        val added = config.addProfile()
+        val added = config.addProfile("  Movie night ")
         assertEquals(3, added.profiles.size)
         assertEquals(added.profiles.map { it.id }.toSet().size, added.profiles.size)
+        assertEquals("Movie night", added.activeProfile.name)
         assertEquals(added.profiles.last().id, added.activeProfileId)
+    }
+
+    @Test
+    fun addProfileRefusesBlankDuplicateAndPastTheSixProfileLimit() {
+        val config = Config(profiles = listOf(Profile("default", "Default")))
+        assertSame(config, config.addProfile("   "))
+        assertSame(config, config.addProfile("default"))
+        var full = config
+        (2..MAX_PROFILES).forEach { full = full.addProfile("P$it") }
+        assertEquals(MAX_PROFILES, full.profiles.size)
+        assertFalse(full.canAddProfile())
+        assertSame(full, full.addProfile("One too many"))
+    }
+
+    @Test
+    fun profileNameValidationNamesTheProblem() {
+        assertEquals(NameProblem.Empty, validateProfileName("  ", emptyList()))
+        assertEquals(NameProblem.Taken, validateProfileName("kids", listOf("Allan", "Kids")))
+        assertEquals(null, validateProfileName("Guest", listOf("Allan", "Kids")))
+    }
+
+    @Test
+    fun suggestedProfileNamesSkipOnesAlreadyInUse() {
+        assertEquals("Profile 2", Config().suggestProfileName())
+        val config = Config(profiles = listOf(Profile("default", "Default"), Profile("a", "Profile 2")))
+        assertEquals("Profile 3", config.suggestProfileName())
+    }
+
+    @Test
+    fun renamingToAnotherProfilesNameIsIgnored() {
+        val config = Config(activeProfileId = "b", profiles = listOf(Profile("a", "Kids"), Profile("b", "B")))
+        assertSame(config, config.renameActiveProfile("kids"))
+        assertEquals("B2", config.renameActiveProfile("B2").activeProfile.name)
+        // Keeping its own name (for example only changing the capitalisation) is allowed.
+        assertEquals("b", config.renameActiveProfile("b").activeProfile.name)
     }
 
     @Test
@@ -67,10 +116,37 @@ class EditsTest {
     }
 
     @Test
+    fun renameActiveProfileTrimsCapsAndIgnoresBlankNames() {
+        val config = Config(activeProfileId = "b", profiles = listOf(Profile("a", "A"), Profile("b", "B")))
+        val renamed = config.renameActiveProfile("  Kids  ")
+        assertEquals("Kids", renamed.profiles.first { it.id == "b" }.name)
+        assertEquals("A", renamed.profiles.first { it.id == "a" }.name)
+        assertSame(config, config.renameActiveProfile("   "))
+        assertEquals(MAX_PROFILE_NAME_LENGTH, config.renameActiveProfile("x".repeat(50)).activeProfile.name.length)
+    }
+
+    @Test
     fun switchToNextProfileWraps() {
         val config = Config(activeProfileId = "b", profiles = listOf(Profile("a", "A"), Profile("b", "B")))
         assertEquals("a", config.switchToNextProfile().activeProfileId)
         assertEquals("b", config.switchToNextProfile().switchToNextProfile().activeProfileId)
+    }
+
+    @Test
+    fun moveRowSavesTheFullOrderAndStopsAtTheEnds() {
+        val p = base.copy(categories = listOf(Category("Video", listOf("a"))))
+        val moved = p.moveRow("inputs", -1)
+        assertEquals(listOf("favorites", "recent", "mostused", "category:Video", "inputs", "other", "quick"), moved.rowOrder)
+        assertEquals(moved.rowOrder, moved.moveRow("favorites", -1).rowOrder)
+        assertEquals("favorites", moved.moveRow("favorites", 1).moveRow("favorites", -1).rowOrder.first())
+        assertEquals("quick", moved.moveRow("quick", 1).rowOrder.last())
+    }
+
+    @Test
+    fun resetRowOrderGoesBackToTheDefault() {
+        val p = base.moveRow("quick", -3)
+        assertTrue(p.rowOrder.isNotEmpty())
+        assertTrue(p.resetRowOrder().rowOrder.isEmpty())
     }
 
     @Test

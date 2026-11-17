@@ -8,13 +8,13 @@ import org.junit.Test
 
 class LogicTest {
     @Test
-    fun driftStaysOnScreenAllDayAndKeepsMoving() {
+    fun driftStaysWithin24PxAllDayAndKeepsMoving() {
         var previous: Pair<Float, Float>? = null
         var moved = 0
         for (minute in 0 until 1440) {
-            val (x, y) = driftFraction(minute)
-            assertTrue("x=$x at $minute", x in 0.1f..0.9f)
-            assertTrue("y=$y at $minute", y in 0.1f..0.9f)
+            val (x, y) = driftOffset(minute)
+            assertTrue("x=$x at $minute", x in -DRIFT_PX..DRIFT_PX)
+            assertTrue("y=$y at $minute", y in -DRIFT_PX..DRIFT_PX)
             if (previous != null && previous != (x to y)) moved++
             previous = x to y
         }

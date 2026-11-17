@@ -2,9 +2,10 @@ package dev.tvlauncher
 
 val DATE_PRESETS = listOf("EEEE, MMMM d", "EEE, MMM d", "d MMMM", "M/d/yyyy")
 val CATEGORY_PRESETS = listOf("Video", "Music", "Games", "Kids", "Tools", "Family")
-val FOCUS_STYLES = listOf("scale", "outline", "glow")
+val FOCUS_STYLES = listOf("outline", "scale", "glow")
 const val RECENT_LIMIT = 10
 const val MAX_NAME_LENGTH = 40
+const val MAX_PROFILE_NAME_LENGTH = 20
 
 /** Adds [pkg] to the category called [categoryName], creating the category when it doesn't exist. */
 fun Profile.withApp(pkg: String, categoryName: String): Profile {
@@ -83,13 +84,55 @@ fun Config.nextFocusStyle(): Config {
     return copy(focusStyle = FOCUS_STYLES[next])
 }
 
-/** Adds a profile with default settings and makes it the active one. */
-fun Config.addProfile(): Config {
+/** The design covers one to six profiles, so that is the limit. */
+const val MAX_PROFILES = 6
+
+enum class NameProblem { Empty, Taken }
+
+/** Null when [name] is acceptable. [others] are the names of the other profiles (compared ignoring case). */
+fun validateProfileName(name: String, others: List<String>): NameProblem? {
+    val clean = name.trim()
+    return when {
+        clean.isEmpty() -> NameProblem.Empty
+        others.any { it.trim().equals(clean, ignoreCase = true) } -> NameProblem.Taken
+        else -> null
+    }
+}
+
+fun Config.canAddProfile(): Boolean = profiles.size < MAX_PROFILES
+
+/** "Profile 2", "Profile 3", ... the first one not already used. */
+fun Config.suggestProfileName(): String {
+    val used = profiles.map { it.name.trim().lowercase() }.toSet()
+    var n = profiles.size + 1
+    while ("profile $n" in used) n++
+    return "Profile $n"
+}
+
+/**
+ * Adds a profile with default settings and makes it the active one. Returns this unchanged when the
+ * profile limit is reached or [name] is not valid (see [validateProfileName]).
+ */
+fun Config.addProfile(name: String): Config {
+    if (!canAddProfile() || validateProfileName(name, profiles.map { it.name }) != null) return this
     val ids = profiles.map { it.id }.toSet()
     var n = profiles.size + 1
     while ("p$n" in ids) n++
-    val profile = Profile(id = "p$n", name = "Profile $n")
+    val profile = Profile(id = "p$n", name = name.trim().take(MAX_PROFILE_NAME_LENGTH))
     return copy(profiles = profiles + profile, activeProfileId = profile.id)
+}
+
+/** Moves a row up (negative [delta]) or down within the profile's full row list and saves that order. */
+fun Profile.moveRow(id: String, delta: Int): Profile = copy(rowOrder = effectiveRowIds(this).moved(id, delta))
+
+fun Profile.resetRowOrder(): Profile = copy(rowOrder = emptyList())
+
+/** Renames the active profile. An invalid name (blank, or used by another profile) is ignored. */
+fun Config.renameActiveProfile(name: String): Config {
+    val clean = name.trim().take(MAX_PROFILE_NAME_LENGTH)
+    val others = profiles.filter { it.id != activeProfile.id }.map { it.name }
+    if (validateProfileName(clean, others) != null) return this
+    return updateActive { it.copy(name = clean) }
 }
 
 /** Deletes the active profile (never the last one) and falls back to the first remaining. */

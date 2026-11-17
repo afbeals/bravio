@@ -3,14 +3,17 @@ package dev.tvlauncher
 import kotlin.math.PI
 import kotlin.math.sin
 
+/** The clock may wander this far from the center in either direction (design px, one px per screen pixel). */
+const val DRIFT_PX = 24f
+
 /**
- * Slow drift for the clock screens (burn-in protection): a point on a Lissajous path that moves
- * a little every minute. Both fractions stay within [0.1, 0.9] of the screen so nothing is clipped.
+ * Slow drift for the clock screens (burn-in protection): a point on a Lissajous path that moves a little
+ * every minute, as an offset in px from the center. Both values stay within [-DRIFT_PX, DRIFT_PX].
  */
-fun driftFraction(minuteOfDay: Int): Pair<Float, Float> {
+fun driftOffset(minuteOfDay: Int): Pair<Float, Float> {
     val m = minuteOfDay.toDouble()
-    val x = 0.5 + 0.4 * sin(m * 2 * PI / 97.0)
-    val y = 0.5 + 0.4 * sin(m * 2 * PI / 61.0)
+    val x = DRIFT_PX * sin(m * 2 * PI / 97.0)
+    val y = DRIFT_PX * sin(m * 2 * PI / 61.0)
     return x.toFloat() to y.toFloat()
 }
 

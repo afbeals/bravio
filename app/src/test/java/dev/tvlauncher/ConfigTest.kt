@@ -29,15 +29,18 @@ class ConfigTest {
         val profile = Profile(
             "p", "P",
             favorites = listOf("a"), renames = mapOf("a" to "Alpha"), launchCounts = mapOf("a" to 4),
-            recent = listOf("a"), showQuickSettings = true, showHdmi = false,
+            recent = listOf("a"), showQuickSettings = true, showHdmi = false, focusSound = true,
         )
-        val config = Config(profiles = listOf(profile), activeProfileId = "p", focusStyle = "glow", dimAtNight = true, backShowsClock = false)
+        val config = Config(profiles = listOf(profile), activeProfileId = "p", focusStyle = "glow", dimAtNight = true, screensaverWallpaper = true, screensaverDim = false)
         assertEquals(config, Config.decode(Config.encode(config)))
         // A config written before these fields existed keeps working with defaults.
         val old = Config.decode("""{"activeProfileId":"p","profiles":[{"id":"p","name":"P"}]}""")
-        assertEquals("scale", old.focusStyle)
+        assertEquals("outline", old.focusStyle)
         assertTrue(old.activeProfile.showHdmi)
         assertTrue(old.activeProfile.favorites.isEmpty())
+        assertFalse(old.activeProfile.focusSound)
+        assertFalse(old.screensaverWallpaper)
+        assertTrue(old.screensaverDim)
     }
 
     @Test
@@ -46,6 +49,17 @@ class ConfigTest {
         assertNull(Config.decodeOrNull("not json"))
         assertNull(Config.decodeOrNull("""{"profiles":[]}"""))
         assertEquals("a", Config.decodeOrNull("""{"activeProfileId":"a","profiles":[{"id":"a","name":"A"}]}""")?.activeProfile?.id)
+    }
+
+    @Test
+    fun aMissingFileIsAFirstRunButAnUnreadableOneIsCorruptNotDefaults() {
+        assertEquals(ConfigLoad.Fresh, Config.classify(fileExists = false, text = null))
+        assertEquals(ConfigLoad.Corrupt, Config.classify(fileExists = true, text = null))
+        assertEquals(ConfigLoad.Corrupt, Config.classify(fileExists = true, text = ""))
+        assertEquals(ConfigLoad.Corrupt, Config.classify(fileExists = true, text = "{ not json"))
+        assertEquals(ConfigLoad.Corrupt, Config.classify(fileExists = true, text = """{"profiles":[]}"""))
+        val saved = Config(focusStyle = "glow")
+        assertEquals(ConfigLoad.Loaded(saved), Config.classify(fileExists = true, text = Config.encode(saved)))
     }
 
     @Test

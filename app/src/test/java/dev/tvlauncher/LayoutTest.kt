@@ -89,6 +89,64 @@ class LayoutTest {
     }
 
     @Test
+    fun inputsAndQuickRowsOnlyAppearWhenSwitchedOnAndAvailable() {
+        val on = Profile("p", "P", showQuickSettings = true)
+        assertEquals(
+            listOf("Apps", "Inputs", "Quick settings"),
+            buildRows(installed, on, hasInputs = true, hasQuickTiles = true).map { it.title },
+        )
+        assertEquals(listOf("Apps"), buildRows(installed, on, hasInputs = false, hasQuickTiles = false).map { it.title })
+        val off = Profile("p", "P", showHdmi = false)
+        assertEquals(listOf("Apps"), buildRows(installed, off, hasInputs = true, hasQuickTiles = true).map { it.title })
+    }
+
+    @Test
+    fun profileOrderMovesAnyRowIncludingInputsToTheTop() {
+        val profile = Profile(
+            "p", "P",
+            categories = listOf(Category("Video", listOf("a"))),
+            rowOrder = listOf("inputs", "other", "category:Video"),
+        )
+        val titles = buildRows(installed, profile, hasInputs = true).map { it.title }
+        assertEquals(listOf("Inputs", "Other apps", "Video"), titles)
+    }
+
+    @Test
+    fun orderIgnoresStaleIdsAndKeepsUnlistedRowsInDefaultOrderAfterListedOnes() {
+        val profile = Profile(
+            "p", "P",
+            favorites = listOf("a"),
+            categories = listOf(Category("Video", listOf("b"))),
+            rowOrder = listOf("category:Deleted", "category:Video"),
+        )
+        val titles = buildRows(installed, profile, hasInputs = true).map { it.title }
+        assertEquals(listOf("Video", "Favorites", "Other apps", "Inputs"), titles)
+    }
+
+    @Test
+    fun aNewCategoryNotYetInTheSavedOrderLandsAfterTheOrderedRows() {
+        val profile = Profile(
+            "p", "P",
+            categories = listOf(Category("Video", listOf("a")), Category("New", listOf("b"))),
+            rowOrder = listOf("other", "category:Video"),
+        )
+        assertEquals(listOf("Other apps", "Video", "New"), buildRows(installed, profile).map { it.title })
+    }
+
+    @Test
+    fun effectiveRowIdsListsEveryRowEvenWhenOffOrEmpty() {
+        val profile = Profile("p", "P", categories = listOf(Category("Video")), showHdmi = false)
+        assertEquals(
+            listOf("favorites", "recent", "mostused", "category:Video", "other", "inputs", "quick"),
+            effectiveRowIds(profile),
+        )
+        assertEquals("Video", rowLabel("category:Video"))
+        assertEquals("Quick settings", rowLabel("quick"))
+        assertEquals(false, profile.rowEnabled("inputs"))
+        assertEquals(true, profile.rowEnabled("category:Video"))
+    }
+
+    @Test
     fun mostUsedBreaksTiesByPackageNameAndCapsAtTen() {
         val many = (1..15).map { "app%02d".format(it) }
         val counts = many.associateWith { 3 }

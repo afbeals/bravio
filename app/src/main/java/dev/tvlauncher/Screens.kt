@@ -1,15 +1,23 @@
 package dev.tvlauncher
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -45,7 +53,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.tv.material3.Button
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.Text
 import kotlinx.coroutines.delay
@@ -63,168 +70,134 @@ suspend fun FocusRequester.requestFocusWhenReady() {
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun SettingButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Button(onClick = onClick, modifier = modifier) { Text(text) }
-}
 
-@Composable
-private fun SectionTitle(text: String) {
-    Text(text, fontSize = 18.sp, color = Color(0xFF90A4AE), modifier = Modifier.padding(top = 12.dp))
-}
+
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun SettingsScreen(
-    config: Config,
-    update: ((Config) -> Config) -> Unit,
-    onHidden: () -> Unit,
-    onDone: () -> Unit,
-) {
-    val profile = config.activeProfile
-    val context = LocalContext.current
-    val first = remember { FocusRequester() }
-    LaunchedEffect(Unit) { first.requestFocusWhenReady() }
-    val imageAvailable = remember { wallpaperImageFile(context) != null }
-    val dateSample = remember(profile.datePattern) {
-        runCatching { LocalDate.now().format(DateTimeFormatter.ofPattern(profile.datePattern)) }.getOrDefault("?")
+fun RenameProfileDialog(currentName: String, onSave: (String) -> Unit, onCancel: () -> Unit) {
+    var name by remember { mutableStateOf(currentName) }
+    val field = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) {
+        field.requestFocusWhenReady()
+        keyboard?.show()
     }
-    var confirmRestore by remember { mutableStateOf(false) }
-    fun toast(message: String) = Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-    fun editProfile(transform: (Profile) -> Profile) = update { c -> c.updateActive(transform) }
-
-    Box(Modifier.fillMaxSize()) {
-        WallpaperBackground(profile)
-        Column(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 32.dp)) {
-            Text("Launcher settings", fontSize = 28.sp, color = Color.White)
-            Text("Profile: ${profile.name}", fontSize = 18.sp, color = Color(0xFFB0BEC5))
-            LazyColumn(modifier = Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                item { SectionTitle("Profiles") }
-                item {
-                    SettingButton(
-                        "Switch profile (now ${profile.name}, ${config.profiles.size} total)",
-                        { update { it.switchToNextProfile() } },
-                        Modifier.focusRequester(first),
-                    )
-                }
-                item { SettingButton("Add profile", { update { it.addProfile() } }) }
-                if (config.profiles.size > 1) {
-                    item { SettingButton("Delete profile ${profile.name}", { update { it.removeActiveProfile() } }) }
-                }
-
-                item { SectionTitle("Clock and date (this profile)") }
-                item { SettingButton("Clock: ${onOff(profile.showClock)}", { editProfile { it.copy(showClock = !it.showClock) } }) }
-                item {
-                    SettingButton(
-                        "Time format: ${if (profile.clock24h) "24-hour" else "12-hour"}",
-                        { editProfile { it.copy(clock24h = !it.clock24h) } },
-                    )
-                }
-                item { SettingButton("Date: ${onOff(profile.showDate)}", { editProfile { it.copy(showDate = !it.showDate) } }) }
-                item { SettingButton("Date format: $dateSample", { editProfile { it.nextDatePattern() } }) }
-
-                item { SectionTitle("Rows (this profile)") }
-                item { SettingButton("Favorites row: ${onOff(profile.showFavorites)}", { editProfile { it.copy(showFavorites = !it.showFavorites) } }) }
-                item { SettingButton("Recently used row: ${onOff(profile.showRecent)}", { editProfile { it.copy(showRecent = !it.showRecent) } }) }
-                item { SettingButton("Most used row: ${onOff(profile.showMostUsed)}", { editProfile { it.copy(showMostUsed = !it.showMostUsed) } }) }
-                item { SettingButton("HDMI inputs row: ${onOff(profile.showHdmi)}", { editProfile { it.copy(showHdmi = !it.showHdmi) } }) }
-                item { SettingButton("Quick settings row: ${onOff(profile.showQuickSettings)}", { editProfile { it.copy(showQuickSettings = !it.showQuickSettings) } }) }
-                item { SettingButton("\"Other apps\" row: ${onOff(profile.showOtherRow)}", { editProfile { it.copy(showOtherRow = !it.showOtherRow) } }) }
-                item { SettingButton("Hidden apps (${profile.hidden.size})", onHidden) }
-
-                item { SectionTitle("Look") }
-                item { SettingButton("Wallpaper: ${wallpaperName(profile.wallpaper)}", { editProfile { it.nextWallpaper(imageAvailable) } }) }
-                item { SettingButton("Dim wallpaper in the dark: ${onOff(config.dimAtNight)}", { update { it.copy(dimAtNight = !it.dimAtNight) } }) }
-                item { SettingButton("Focus style: ${config.focusStyle}", { update { it.nextFocusStyle() } }) }
-
-                item { SectionTitle("Behavior") }
-                item {
-                    SettingButton(
-                        "On launch: ${if (config.askProfileAtLaunch) "ask who's watching" else "open the home screen"}",
-                        { update { it.copy(askProfileAtLaunch = !it.askProfileAtLaunch) } },
-                    )
-                }
-                item {
-                    SettingButton(
-                        "Back on the home screen: ${if (config.backShowsClock) "show the clock" else "do nothing"}",
-                        { update { it.copy(backShowsClock = !it.backShowsClock) } },
-                    )
-                }
-
-                item { SectionTitle("Backup") }
-                item {
-                    SettingButton("Back up settings to a file", {
-                        toast(if (Backup.save(context, config)) "Saved ${Backup.FILE_NAME}" else "Could not save the backup")
-                    })
-                }
-                item {
-                    SettingButton(
-                        if (confirmRestore) "Press again to replace ALL settings" else "Restore settings from backup",
-                        {
-                            when {
-                                !Backup.exists(context) -> toast("No ${Backup.FILE_NAME} found")
-                                !confirmRestore -> confirmRestore = true
-                                else -> {
-                                    confirmRestore = false
-                                    val restored = Backup.load(context)
-                                    if (restored == null) {
-                                        toast("The backup file is not valid. Nothing was changed.")
-                                    } else {
-                                        update { restored }
-                                        toast("Settings restored")
-                                    }
-                                }
-                            }
-                        },
-                    )
-                }
-
-                item { SettingButton("Done", onDone) }
+    // Back closes only this dialog, not the Settings screen behind it.
+    BackHandler(enabled = true) { onCancel() }
+    Box(Modifier.fillMaxSize().background(Color(0xCC000000)), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Rename profile", fontSize = 28.sp, color = Ink.colors.text)
+            NameField(name, { name = it }, Modifier.focusRequester(field), hint = "Profile name", onDone = { onSave(name) })
+            Row(horizontalArrangement = Arrangement.spacedBy(Ink.gap24)) {
+                InkButton("Cancel", onCancel)
+                InkButton("Save name", { onSave(name) }, primary = true)
             }
         }
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-fun ProfilePicker(config: Config, onPick: (String) -> Unit) {
+fun ProfilePicker(config: Config, onPick: (String) -> Unit, onCreate: (String) -> Unit) {
     val first = remember { FocusRequester() }
-    LaunchedEffect(Unit) { first.requestFocusWhenReady() }
+    var creating by remember { mutableStateOf(false) }
+    LaunchedEffect(creating) { if (!creating) first.requestFocusWhenReady() }
+    val style = config.focusStyle
+    // One to four tiles share a row; five or six wrap into rows of three.
+    val tiles: List<ProfileTile> = config.profiles.map { ProfileTile(it.id, it.name.take(1).uppercase(), it.name, it.id == config.activeProfile.id) } +
+        if (config.canAddProfile()) listOf(ProfileTile(null, "+", "Create new", false)) else emptyList()
+    val rows = if (tiles.size <= 4) listOf(tiles) else tiles.chunked(3)
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         WallpaperBackground(config.activeProfile)
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Who's watching?", fontSize = 32.sp, color = Color.White)
-            config.profiles.forEachIndexed { index, p ->
-                val modifier = if (index == 0) Modifier.focusRequester(first) else Modifier
-                Button(onClick = { onPick(p.id) }, modifier = modifier) { Text(p.name) }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-fun HiddenAppsScreen(profile: Profile, labelOf: (String) -> String, onUnhide: (String) -> Unit, onDone: () -> Unit) {
-    val first = remember { FocusRequester() }
-    LaunchedEffect(Unit) { first.requestFocusWhenReady() }
-    Box(Modifier.fillMaxSize()) {
-        WallpaperBackground(profile)
-        Column(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 32.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Hidden apps (${profile.hidden.size})", fontSize = 28.sp, color = Color.White)
-            Button(onClick = onDone, modifier = Modifier.focusRequester(first)) { Text("Done") }
-            if (profile.hidden.isEmpty()) Text("No apps are hidden.", fontSize = 18.sp, color = Color(0xFFB0BEC5))
-            val hidden = remember(profile.hidden) { profile.hidden.sortedBy { labelOf(it).lowercase() } }
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(hidden, key = { it }) { pkg ->
-                    Button(onClick = { onUnhide(pkg) }) { Text("Unhide ${labelOf(pkg)}") }
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Ink.gap32)) {
+            Text("Who’s watching?", style = InkType.title)
+            rows.forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(px(40))) {
+                    row.forEach { tile ->
+                        val isFirst = tile === tiles.first()
+                        ProfileTileCard(
+                            tile, style,
+                            onClick = { if (tile.id == null) creating = true else onPick(tile.id) },
+                            modifier = if (isFirst) Modifier.focusRequester(first) else Modifier,
+                        )
+                    }
                 }
             }
         }
+        if (creating) {
+            CreateProfileDialog(config, onCreate = { name -> creating = false; onCreate(name) }, onCancel = { creating = false })
+        }
     }
 }
 
-/** A single-line text box with a visible focus border (the TV keyboard opens when it is focused). */
+private data class ProfileTile(val id: String?, val initial: String, val name: String, val current: Boolean)
+
+@Composable
+private fun ProfileTileCard(tile: ProfileTile, style: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val c = Ink.colors
+    var focused by remember { mutableStateOf(false) }
+    InkSurface(onClick = onClick, modifier = modifier.size(px(244), px(272)), style = style, onFocusChange = { focused = it }) { _ ->
+        Column(
+            Modifier.fillMaxSize().padding(px(24)),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(Ink.gap16),
+        ) {
+            Box(
+                Modifier.size(px(112)).background(c.raised, RoundedCornerShape(Ink.radius24)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (tile.id == null) {
+                    InkIcon(R.drawable.ic_plus, size = px(48), tint = c.focus)
+                } else {
+                    Text(tile.initial, style = InkType.title, color = c.focus)
+                }
+            }
+            // The focused name turns iris, matching the outline.
+            Text(tile.name, style = InkType.section, color = if (focused) c.focus else c.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (tile.current) InkIcon(R.drawable.ic_check, size = px(24), tint = c.focus)
+        }
+    }
+}
+
+@Composable
+fun CreateProfileDialog(config: Config, onCreate: (String) -> Unit, onCancel: () -> Unit) {
+    var name by remember { mutableStateOf(config.suggestProfileName()) }
+    val field = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) {
+        field.requestFocusWhenReady()
+        keyboard?.show()
+    }
+    val problem = validateProfileName(name, config.profiles.map { it.name })
+    BackHandler(enabled = true) { onCancel() }
+    Box(Modifier.fillMaxSize().background(Color(0xD1000000)), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(Ink.gap16)) {
+            Text("Create profile", style = InkType.title)
+            NameField(name, { name = it.take(MAX_PROFILE_NAME_LENGTH) }, Modifier.focusRequester(field), hint = "Profile name", onDone = { if (problem == null) onCreate(name) })
+            Text(
+                when (problem) {
+                    NameProblem.Empty -> "Enter a profile name to continue."
+                    NameProblem.Taken -> "That name is already used by another profile."
+                    null -> " "
+                },
+                style = InkType.body,
+                color = Ink.colors.muted,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(Ink.gap24)) {
+                InkButton("Cancel", onCancel)
+                InkButton("Create", { onCreate(name) }, primary = true, enabled = problem == null)
+            }
+        }
+    }
+}
+
+/**
+ * Row order for the active profile. Every row is listed (even ones that are off or empty) so the order
+ * is kept for when they come back. Focus stays on the row being moved, so OK can be pressed repeatedly.
+ */
+
+
+/** A single-line text box with the design's 6 px iris outline when focused (the TV keyboard opens then). */
 @Composable
 fun NameField(
     value: String,
@@ -234,28 +207,28 @@ fun NameField(
     onDone: () -> Unit = {},
 ) {
     var focused by remember { mutableStateOf(false) }
+    val c = Ink.colors
     BasicTextField(
         value = value,
         onValueChange = onChange,
         modifier = modifier
-            .width(460.dp)
+            .width(px(1000))
             .onFocusChanged { focused = it.isFocused }
-            .background(Color(0x33FFFFFF), RoundedCornerShape(8.dp))
-            .border(if (focused) 3.dp else 1.dp, if (focused) Color.White else Color(0x66FFFFFF), RoundedCornerShape(8.dp))
-            .padding(16.dp),
+            .background(c.panel, RoundedCornerShape(Ink.radius8))
+            .border(if (focused) Ink.focusWidth else 0.dp, c.focus, RoundedCornerShape(Ink.radius8))
+            .padding(px(24)),
         singleLine = true,
-        textStyle = TextStyle(color = Color.White, fontSize = 24.sp),
-        cursorBrush = SolidColor(Color.White),
+        textStyle = InkType.label.copy(color = c.text),
+        cursorBrush = SolidColor(c.focus),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
         keyboardActions = KeyboardActions(onDone = { onDone() }),
         decorationBox = { inner ->
-            if (value.isEmpty()) Text(hint, color = Color(0x99FFFFFF), fontSize = 24.sp)
+            if (value.isEmpty()) Text(hint, style = InkType.label, color = c.muted)
             inner()
         },
     )
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun SearchScreen(
     repo: AppRepository,
@@ -276,68 +249,51 @@ fun SearchScreen(
         apps.filter { it.packageName !in profile.hidden }
             .filter { profile.labelFor(it.packageName, it.label).contains(needle, ignoreCase = true) }
     }
+    val searching = query.isNotBlank()
     Box(Modifier.fillMaxSize()) {
         WallpaperBackground(profile)
-        Column(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("Search apps", fontSize = 28.sp, color = Color.White)
-            NameField(query, { query = it }, Modifier.focusRequester(field), hint = "Type an app name", onDone = { keyboard?.hide() })
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(150.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                items(results, key = { it.packageName }) { app ->
-                    AppCard(repo, app, profile.labelFor(app.packageName, app.label), style, onOpen = { onOpen(app) }, onMenu = { onOpen(app) })
+        Column(Modifier.fillMaxSize().padding(start = Ink.safeHorizontal, top = px(64), end = Ink.safeHorizontal)) {
+            Text("Search", style = InkType.title)
+            Spacer(Modifier.height(px(8)))
+            Text(
+                when {
+                    !searching -> "Search app names"
+                    results.isEmpty() -> "No apps found"
+                    else -> "${countOf(results.size, "app", "apps")} found"
+                },
+                style = InkType.body, color = Ink.colors.muted,
+            )
+            Spacer(Modifier.height(px(28)))
+            NameField(query, { query = it }, Modifier.focusRequester(field), hint = "Search app names", onDone = { keyboard?.hide() })
+            Spacer(Modifier.height(px(32)))
+            if (searching && results.isEmpty()) {
+                InkButton("Edit search", { field.requestFocus(); keyboard?.show() }, style = style)
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(px(244)),
+                    contentPadding = PaddingValues(px(16)),
+                    horizontalArrangement = Arrangement.spacedBy(Ink.gap24),
+                    verticalArrangement = Arrangement.spacedBy(Ink.gap24),
+                ) {
+                    items(results, key = { it.packageName }) { app ->
+                        AppCard(
+                            repo, app, profile.labelFor(app.packageName, app.label), profile.isFavorite(app.packageName), style,
+                            onOpen = { onOpen(app) }, onMenu = { onOpen(app) }, onFocus = { _, _ -> },
+                        )
+                    }
                 }
             }
-            if (results.isEmpty()) Text("No matching apps.", fontSize = 18.sp, color = Color(0xFFB0BEC5))
         }
     }
 }
 
-/** Full-screen drifting clock. Any key returns to the home screen. */
-@Composable
-fun ClockScreen(profile: Profile, onExit: () -> Unit) {
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestFocusWhenReady() }
-    val now by produceState(LocalDateTime.now()) {
-        while (true) {
-            value = LocalDateTime.now()
-            delay(60_000L - System.currentTimeMillis() % 60_000L)
-        }
-    }
-    val (fx, fy) = driftFraction(now.hour * 60 + now.minute)
-    val time = now.format(DateTimeFormatter.ofPattern(if (profile.clock24h) "HH:mm" else "h:mm a"))
-    val date = runCatching { now.format(DateTimeFormatter.ofPattern(profile.datePattern)) }.getOrDefault("")
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .onKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown) {
-                    onExit()
-                    true
-                } else {
-                    false
-                }
-            }
-            .focusRequester(focus)
-            .focusable(),
-        contentAlignment = BiasAlignment(fx * 2 - 1, fy * 2 - 1),
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(time, fontSize = 96.sp, color = Color(0xFFC8C8C8))
-            if (profile.showDate) Text(date, fontSize = 28.sp, color = Color(0xFF8C8C8C))
-        }
-    }
-}
 
 data class MenuActions(
     val onOpen: () -> Unit,
     val onToggleFavorite: () -> Unit,
     val onAddTo: (String) -> Unit,
     val onRemoveFromCategories: () -> Unit,
-    val onMove: (Int) -> Unit,
+    val onReorder: () -> Unit,
     val onRename: (String) -> Unit,
     val onHide: () -> Unit,
     val onInfo: () -> Unit,
@@ -371,10 +327,7 @@ fun AppMenu(app: AppEntry, profile: Profile, row: RowSpec?, actions: MenuActions
             add((if (profile.isFavorite(app.packageName)) "Remove from favorites" else "Add to favorites") to actions.onToggleFavorite)
             add("Add to category..." to { stage = MenuStage.Categories })
             if (profile.inAnyCategory(app.packageName)) add("Remove from categories" to actions.onRemoveFromCategories)
-            if (canMove) {
-                add("Move left" to { actions.onMove(-1) })
-                add("Move right" to { actions.onMove(1) })
-            }
+            if (canMove) add("Reorder in row" to actions.onReorder)
             add("Rename..." to { stage = MenuStage.Rename })
             add("Hide from home" to actions.onHide)
             add("App info" to actions.onInfo)
@@ -382,29 +335,46 @@ fun AppMenu(app: AppEntry, profile: Profile, row: RowSpec?, actions: MenuActions
         }
         MenuStage.Categories -> buildList {
             (profile.categories.map { it.name } + CATEGORY_PRESETS).distinct().forEach { category ->
-                add(category to { actions.onAddTo(category) })
+                val member = profile.categories.any { it.name == category && app.packageName in it.packages }
+                add((if (member) "$category   ✓" else category) to { actions.onAddTo(category) })
             }
             add("Back" to { stage = MenuStage.Main })
         }
         MenuStage.Rename -> emptyList()
     }
 
-    Box(Modifier.fillMaxSize().background(Color(0xCC000000)), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(profile.labelFor(app.packageName, app.label), fontSize = 28.sp, color = Color.White)
+    val title = when (stage) {
+        MenuStage.Categories -> "Add ${profile.labelFor(app.packageName, app.label)} to…"
+        else -> profile.labelFor(app.packageName, app.label)
+    }
+    BackHandler(enabled = stage != MenuStage.Main) { stage = MenuStage.Main }
+    Box(Modifier.fillMaxSize().background(Color(0xD1000000))) {
+        Column(
+            Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = px(70), end = Ink.safeHorizontal)
+                .size(px(600), px(940))
+                .background(Ink.colors.panel, RoundedCornerShape(Ink.radius16))
+                .padding(px(32)),
+            verticalArrangement = Arrangement.spacedBy(Ink.gap16),
+        ) {
+            Text(title, style = InkType.section, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (stage == MenuStage.Rename) {
                 NameField(name, { name = it }, Modifier.focusRequester(field), hint = "App name", onDone = { actions.onRename(name) })
-                Button(onClick = { actions.onRename(name) }) { Text("Save") }
-                Button(onClick = { actions.onRename("") }) { Text("Use the original name") }
-                Button(onClick = { stage = MenuStage.Main }) { Text("Back") }
+                InkButton("Save name", { actions.onRename(name) }, primary = true)
+                InkButton("Use original name", { actions.onRename("") })
+                InkButton("Back", { stage = MenuStage.Main })
             } else {
-                LazyColumn(
-                    modifier = Modifier.heightIn(max = 400.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(Ink.gap8)) {
                     itemsIndexed(entries) { index, (text, action) ->
-                        Button(onClick = action, modifier = if (index == 0) Modifier.focusRequester(first) else Modifier) { Text(text) }
+                        InkSurface(
+                            onClick = action,
+                            modifier = Modifier.fillMaxWidth().height(px(68)).then(if (index == 0) Modifier.focusRequester(first) else Modifier),
+                        ) { _ ->
+                            Row(Modifier.fillMaxSize().padding(px(16)), verticalAlignment = Alignment.CenterVertically) {
+                                Text(text, style = InkType.label, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            }
+                        }
                     }
                 }
             }

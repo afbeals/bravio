@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.view.KeyEvent
+import androidx.compose.ui.platform.LocalContext
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -59,6 +60,7 @@ class MainActivity : ComponentActivity() {
     private var inputList by mutableStateOf<List<InputEntry>>(emptyList())
     private var tiles by mutableStateOf<List<QuickTile>>(emptyList())
     private var homePresses by mutableIntStateOf(0)
+    private var backHolds by mutableIntStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -67,7 +69,25 @@ class MainActivity : ComponentActivity() {
         inputs = TvInputs(this)
         apps = repo.load()
         tiles = quickTiles(this)
-        setContent { Home(repo, store, apps, inputList, tiles, homePresses, this::start) }
+        setContent { Home(repo, store, apps, inputList, tiles, homePresses, backHolds, this::start) }
+    }
+
+    // Holding Back on Home opens the clock; a short Back does nothing there. Tracking makes the key
+    // report a long press, and a handled long press cancels the key-up so it is not also a short Back.
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_BACK && event.repeatCount == 0) {
+            event.startTracking()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyLongPress(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            backHolds++
+            return true
+        }
+        return super.onKeyLongPress(keyCode, event)
     }
 
     override fun onResume() {
@@ -96,7 +116,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { Home, Settings, Picker, Search, Hidden, Clock }
+private enum class Screen { Home, Settings, Picker, Search, Hidden, RowOrder, Wallpaper, Clock }
 
 private data class MenuTarget(val app: AppEntry, val row: RowSpec?)
 
@@ -109,24 +129,78 @@ private fun Home(
     inputList: List<InputEntry>,
     tiles: List<QuickTile>,
     homePresses: Int,
+    backHolds: Int,
     start: (Intent) -> Unit,
 ) {
-    var config by remember { mutableStateOf(store.load()) }
+    val context = LocalContext.current
+    var loaded by remember { mutableStateOf(store.loadResult()) }
+    var config by remember { mutableStateOf((loaded as? ConfigLoad.Loaded)?.config ?: Config()) }
+    var toast by remember { mutableStateOf<ToastMsg?>(null) }
+    fun notify(text: String, error: Boolean = false) {
+        toast = ToastMsg(text, error)
+    }
+    // A change only takes effect if it was saved, so what is on screen always matches what is on disk.
     fun update(transform: (Config) -> Config) {
-        config = transform(config)
-        store.save(config)
+        val next = transform(config)
+        if (store.save(next)) {
+            config = next
+        } else {
+            notify("Could not save changes. Try again.", error = true)
+        }
+    }
+    LaunchedEffect(toast) {
+        if (toast != null) {
+            delay(TOAST_MILLIS)
+            toast = null
+        }
+    }
+    if (loaded == ConfigLoad.Corrupt) {
+        // The unreadable file is left alone until the user chooses what to do; nothing is saved meanwhile.
+        InkTheme(false) {
+            Box(Modifier.fillMaxSize()) {
+                ConfigErrorScreen(
+                    onRetry = {
+                        loaded = store.loadResult()
+                        (loaded as? ConfigLoad.Loaded)?.let { config = it.config }
+                    },
+                    onRestore = {
+                        val backup = Backup.load(context)
+                        when {
+                            backup == null -> notify("No valid ${Backup.FILE_NAME} found.", error = true)
+                            store.quarantineCorrupt() && store.save(backup) -> {
+                                config = backup
+                                loaded = ConfigLoad.Loaded(backup)
+                            }
+                            else -> notify("Could not restore the backup.", error = true)
+                        }
+                    },
+                    onReset = {
+                        if (store.quarantineCorrupt() && store.save(Config())) {
+                            config = Config()
+                            loaded = ConfigLoad.Loaded(config)
+                        } else {
+                            notify("Could not reset the settings.", error = true)
+                        }
+                    },
+                )
+                ToastHost(toast)
+            }
+        }
+        return
     }
 
     val profile = config.activeProfile
     val style = config.focusStyle
     val byPackage = remember(apps) { apps.associateBy { it.packageName } }
-    val rows = remember(apps, profile) { buildRows(apps.map { it.packageName }, profile) }
+    val rows = remember(apps, profile, inputList, tiles) {
+        buildRows(apps.map { it.packageName }, profile, hasInputs = inputList.isNotEmpty(), hasQuickTiles = tiles.isNotEmpty())
+    }
     var menu by remember { mutableStateOf<MenuTarget?>(null) }
+    var reorder by remember { mutableStateOf<ReorderState?>(null) }
     var screen by remember { mutableStateOf(if (config.askProfileAtLaunch) Screen.Picker else Screen.Home) }
     // The long press opens the menu while OK is still held. Releasing OK must not also click
     // whatever has focus by then (the menu's first button), so the first release is swallowed.
     var swallowRelease by remember { mutableStateOf(false) }
-    val firstCard = remember { FocusRequester() }
     val dim = rememberDim(config.dimAtNight)
     val network = rememberNetworkState()
 
@@ -135,13 +209,22 @@ private fun Home(
         start(app.intent)
     }
 
-    // A launcher must never exit on Back: it closes the menu, then leaves a sub-screen, then shows the clock.
+    // A launcher must never exit on Back: it closes the menu, then leaves a sub-screen, and on Home does nothing.
     BackHandler(enabled = true) {
         when {
+            reorder != null -> {
+                reorder?.let { r -> update { r.original } }
+                reorder = null
+            }
             menu != null -> menu = null
+            screen == Screen.Hidden || screen == Screen.RowOrder || screen == Screen.Wallpaper -> screen = Screen.Settings
             screen != Screen.Home -> screen = Screen.Home
-            config.backShowsClock -> screen = Screen.Clock
         }
+    }
+
+    // Holding Back on Home opens the clock (see MainActivity.onKeyLongPress).
+    LaunchedEffect(backHolds) {
+        if (backHolds > 0 && screen == Screen.Home && menu == null) screen = Screen.Clock
     }
 
     // Home pressed while the launcher is already open: return to the home screen.
@@ -151,27 +234,67 @@ private fun Home(
             screen = Screen.Home
         }
     }
-    LaunchedEffect(screen) {
-        if (screen == Screen.Home) firstCard.requestFocusWhenReady()
+
+    fun moveReordered(r: ReorderState, delta: Int) {
+        when (r.row.kind) {
+            RowKind.Favorites -> update { it.updateActive { p -> p.moveInFavorites(r.pkg, delta) } }
+            RowKind.Category -> update { it.updateActive { p -> p.moveInCategory(r.pkg, r.row.title, delta) } }
+            else -> Unit
+        }
     }
 
-    MaterialTheme(colorScheme = darkColorScheme()) {
-        CompositionLocalProvider(LocalDim provides dim) {
+    InkTheme(dim) {
+        CompositionLocalProvider(LocalDim provides dim, LocalFocusSound provides profile.focusSound) {
+          Box(Modifier.fillMaxSize()) {
             when (screen) {
-                Screen.Picker -> ProfilePicker(config) { id ->
-                    update { it.copy(activeProfileId = id) }
-                    screen = Screen.Home
-                }
+                Screen.Picker -> ProfilePicker(
+                    config,
+                    onPick = { id ->
+                        update { it.copy(activeProfileId = id) }
+                        screen = Screen.Home
+                    },
+                    onCreate = { name ->
+                        update { it.addProfile(name) }
+                        screen = Screen.Home
+                    },
+                )
 
                 Screen.Settings -> SettingsScreen(
                     config = config,
+                    rows = rows,
+                    onProfiles = { screen = Screen.Picker },
+                    onSearch = { screen = Screen.Search },
+                    onPreviewClock = { screen = Screen.Clock },
+                    notify = { text, error -> notify(text, error) },
                     update = ::update,
                     onHidden = { screen = Screen.Hidden },
+                    onWallpaper = { screen = Screen.Wallpaper },
+                    onRowOrder = { screen = Screen.RowOrder },
                     onDone = { screen = Screen.Home },
+                )
+
+                Screen.Wallpaper -> WallpaperScreen(
+                    profile = profile,
+                    style = style,
+                    onApply = { id ->
+                        update { it.updateActive { p -> p.copy(wallpaper = id) } }
+                        screen = Screen.Settings
+                    },
+                    onClose = { screen = Screen.Settings },
+                )
+
+                Screen.RowOrder -> RowOrderScreen(
+                    profile = profile,
+                    style = style,
+                    onMove = { id, delta -> update { it.updateActive { p -> p.moveRow(id, delta) } } },
+                    onReset = { update { it.updateActive { p -> p.resetRowOrder() } } },
+                    onDone = { screen = Screen.Settings },
                 )
 
                 Screen.Hidden -> HiddenAppsScreen(
                     profile = profile,
+                    style = style,
+                    onUnhideAll = { update { it.updateActive { p -> p.copy(hidden = emptySet()) } } },
                     labelOf = { pkg -> byPackage[pkg]?.label ?: pkg },
                     onUnhide = { pkg -> update { it.updateActive { p -> p.unhide(pkg) } } },
                     onDone = { screen = Screen.Settings },
@@ -182,79 +305,62 @@ private fun Home(
                     open(app)
                 }
 
-                Screen.Clock -> ClockScreen(profile) { screen = Screen.Home }
+                Screen.Clock -> ClockScreen(config) { screen = Screen.Home }
 
                 Screen.Home -> Box(
                     Modifier.fillMaxSize().onPreviewKeyEvent { event ->
                         val isSelectKey = event.key == Key.DirectionCenter || event.key == Key.Enter || event.key == Key.NumPadEnter
-                        if (swallowRelease && event.type == KeyEventType.KeyUp && isSelectKey) {
-                            swallowRelease = false
-                            true
-                        } else {
-                            false
+                        val r = reorder
+                        when {
+                            // Reorder mode: Left and Right move the app, OK saves, and the other arrows are held still.
+                            r != null -> when {
+                                event.key == Key.DirectionLeft || event.key == Key.DirectionRight -> {
+                                    if (event.type == KeyEventType.KeyDown) moveReordered(r, if (event.key == Key.DirectionLeft) -1 else 1)
+                                    true
+                                }
+                                event.key == Key.DirectionUp || event.key == Key.DirectionDown -> true
+                                isSelectKey -> {
+                                    if (event.type == KeyEventType.KeyUp) {
+                                        reorder = null
+                                        notify("${r.row.title} order saved")
+                                    }
+                                    true
+                                }
+                                else -> false
+                            }
+                            swallowRelease && event.type == KeyEventType.KeyUp && isSelectKey -> {
+                                swallowRelease = false
+                                true
+                            }
+                            else -> false
                         }
                     },
                 ) {
-                    WallpaperBackground(profile)
-                    Column(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 32.dp)) {
-                        Header(profile, network, onSearch = { screen = Screen.Search })
-                        Spacer(Modifier.height(16.dp))
-                        LazyColumn(verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                            items(rows.size, key = { "${rows[it].kind}:${rows[it].title}" }) { rowIndex ->
-                                val row = rows[rowIndex]
-                                Text(row.title, fontSize = 22.sp, color = Color(0xFFB0BEC5))
-                                Spacer(Modifier.height(8.dp))
-                                LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                    items(row.packages.size, key = { row.packages[it] }) { index ->
-                                        val app = byPackage[row.packages[index]] ?: return@items
-                                        val isFirst = rowIndex == 0 && index == 0
-                                        AppCard(
-                                            repo = repo,
-                                            app = app,
-                                            label = profile.labelFor(app.packageName, app.label),
-                                            style = style,
-                                            onOpen = { open(app) },
-                                            onMenu = {
-                                                swallowRelease = true
-                                                menu = MenuTarget(app, row)
-                                            },
-                                            modifier = if (isFirst) Modifier.focusRequester(firstCard) else Modifier,
-                                        )
-                                    }
-                                }
-                            }
-                            if (profile.showHdmi && inputList.isNotEmpty()) {
-                                item(key = "hdmi") {
-                                    Text("Inputs", fontSize = 22.sp, color = Color(0xFFB0BEC5))
-                                    Spacer(Modifier.height(8.dp))
-                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                        items(inputList, key = { it.id }) { input ->
-                                            TileCard(input.label, input.status, style, onClick = { start(TvInputs.switchIntent(input.id)) })
-                                        }
-                                    }
-                                }
-                            }
-                            if (profile.showQuickSettings && tiles.isNotEmpty()) {
-                                item(key = "quick") {
-                                    Text("Quick settings", fontSize = 22.sp, color = Color(0xFFB0BEC5))
-                                    Spacer(Modifier.height(8.dp))
-                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                        items(tiles, key = { it.label }) { tile ->
-                                            TileCard(tile.label, null, style, onClick = { start(tile.intent) })
-                                        }
-                                    }
-                                }
-                            }
-                            item(key = "settings") {
-                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    Button(onClick = { screen = Screen.Settings }) { Text("Launcher settings") }
-                                    if (profile.hidden.isNotEmpty()) {
-                                        Button(onClick = { screen = Screen.Hidden }) { Text("Hidden apps (${profile.hidden.size})") }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    WallpaperBackground(profile, WallpaperSurface.Reading)
+                    HomeContent(
+                        repo = repo,
+                        byPackage = byPackage,
+                        profile = profile,
+                        rows = rows,
+                        inputs = inputList,
+                        tiles = tiles,
+                        style = style,
+                        network = network,
+                        reorder = reorder?.let { ReorderInfo(it.row.id, it.pkg, it.name) },
+                        actions = HomeActions(
+                            open = ::open,
+                            menu = { app, row ->
+                                swallowRelease = true
+                                menu = MenuTarget(app, row)
+                            },
+                            start = start,
+                            search = { screen = Screen.Search },
+                            settings = { screen = Screen.Settings },
+                            profiles = { screen = Screen.Picker },
+                            hidden = { screen = Screen.Hidden },
+                            unhideAll = { update { it.updateActive { p -> p.copy(hidden = emptySet()) } } },
+                        ),
+                    )
                     menu?.let { target ->
                         val app = target.app
                         val pkg = app.packageName
@@ -266,26 +372,23 @@ private fun Home(
                                 onOpen = { menu = null; open(app) },
                                 onToggleFavorite = {
                                     menu = null
+                                    val adding = !profile.isFavorite(pkg)
                                     update { it.updateActive { p -> p.toggleFavorite(pkg) } }
+                                    notify(if (adding) "Added to Favorites" else "Removed from Favorites")
                                 },
                                 onAddTo = { name ->
                                     menu = null
                                     update { it.updateActive { p -> p.withApp(pkg, name) } }
+                                    notify("Added to $name")
                                 },
                                 onRemoveFromCategories = {
                                     menu = null
                                     update { it.updateActive { p -> p.withoutApp(pkg) } }
+                                    notify("Removed from categories")
                                 },
-                                // Stays open so an app can be nudged several places in a row.
-                                onMove = { delta ->
-                                    val origin = target.row
-                                    if (origin != null) {
-                                        when (origin.kind) {
-                                            RowKind.Favorites -> update { it.updateActive { p -> p.moveInFavorites(pkg, delta) } }
-                                            RowKind.Category -> update { it.updateActive { p -> p.moveInCategory(pkg, origin.title, delta) } }
-                                            else -> Unit
-                                        }
-                                    }
+                                onReorder = {
+                                    menu = null
+                                    target.row?.let { reorder = ReorderState(pkg, profile.labelFor(pkg, app.label), it, config) }
                                 },
                                 onRename = { name ->
                                     menu = null
@@ -294,6 +397,7 @@ private fun Home(
                                 onHide = {
                                     menu = null
                                     update { it.updateActive { p -> p.copy(hidden = p.hidden + pkg) } }
+                                    notify("${profile.labelFor(pkg, app.label)} hidden from Home")
                                 },
                                 onInfo = {
                                     menu = null
@@ -308,55 +412,17 @@ private fun Home(
                     }
                 }
             }
+            if (screen == Screen.Home && reorder != null) {
+                Text(
+                    "Left / Right  Move     OK  Save     Back  Cancel",
+                    style = InkType.body, color = Ink.colors.muted,
+                    modifier = Modifier.padding(start = px(448), top = px(986)),
+                )
+            }
+            ToastHost(toast)
+          }
         }
     }
 }
 
-@OptIn(ExperimentalTvMaterial3Api::class)
-@Composable
-private fun Header(profile: Profile, network: NetworkState, onSearch: () -> Unit) {
-    val now by produceState(LocalDateTime.now()) {
-        while (true) {
-            value = LocalDateTime.now()
-            delay(60_000L - System.currentTimeMillis() % 60_000L)
-        }
-    }
-    val timeFormat = if (profile.clock24h) "HH:mm" else "h:mm a"
-    val dateText = remember(now, profile.datePattern) {
-        runCatching { now.format(DateTimeFormatter.ofPattern(profile.datePattern)) }.getOrDefault("")
-    }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(verticalAlignment = Alignment.Bottom) {
-            if (profile.showClock) {
-                Text(now.format(DateTimeFormatter.ofPattern(timeFormat)), fontSize = 48.sp, color = Color.White)
-            }
-            if (profile.showClock && profile.showDate) Spacer(Modifier.width(24.dp))
-            if (profile.showDate) {
-                Text(dateText, fontSize = 22.sp, color = Color(0xFFB0BEC5), modifier = Modifier.padding(bottom = 8.dp))
-            }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            NetworkBadge(network)
-            Button(onClick = onSearch) { Text("Search") }
-        }
-    }
-}
-
-@Composable
-private fun NetworkBadge(state: NetworkState) {
-    val (label, color) = when (state) {
-        NetworkState.WiFi -> "Wi-Fi" to Color(0xFF66BB6A)
-        NetworkState.Ethernet -> "Ethernet" to Color(0xFF66BB6A)
-        NetworkState.Other -> "Online" to Color(0xFF66BB6A)
-        NetworkState.NoInternet -> "No internet" to Color(0xFFFFB300)
-        NetworkState.Offline -> "Offline" to Color(0xFFEF5350)
-    }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("●", color = color, fontSize = 16.sp)
-        Text(label, color = Color(0xFFB0BEC5), fontSize = 18.sp)
-    }
-}
+private data class ReorderState(val pkg: String, val name: String, val row: RowSpec, val original: Config)

@@ -195,3 +195,8 @@ row scroll that follows focus. No auto-playing animation on Home. Respect that t
 3. Every screen in section 3, using the mockup content from section 2.
 4. A short style sheet: colors (with dark and dim variants), type scale, spacing grid, corner radii, focus style.
 5. Open question for the designer: icon cards or banner cards by default, and how the two mix in one row.
+
+---
+
+Status: this brief was the input for the Figma design. The design is implemented; the notes taken from the Figma file
+(sizes, strings, states, conflicts) are in `docs/design-spec/`.

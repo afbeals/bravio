@@ -26,75 +26,62 @@ Installing does not change the Home button. The stock launcher keeps priority un
 
 ## Wallpaper
 
-Each profile has its own wallpaper. Five gradient presets (Midnight, Ocean, Dusk, Forest, Charcoal) are built in
-and cost almost no memory. You can also use your own image.
+Each profile has its own wallpaper. Choose it in **Launcher settings > Wallpaper**: six presets (Ink, Raised Ink,
+Iris dusk, Night gradient, and the bundled photos Alpine lake and Night sky) plus **From TV storage** for your own
+pictures. Choosing one shows a preview over a mock Home; **Apply wallpaper** saves it for the current profile and
+**Cancel** keeps the old one. Photos get a 70% black scrim and Home draws an opaque reading surface over them, so
+text is always readable. Screens without a sidebar show plain Ink instead of a photo.
 
-### Choose a wallpaper
+The bundled photos are the two sample images from the Figma design (`docs/design-spec/wallpapers/`). The design
+file describes them as Unsplash images; their license and attribution have not been checked.
 
-On the TV: **Launcher settings > Wallpaper** cycles through the options. Press Done to return home.
-"Your image" only appears in the cycle while an image file exists on the TV.
+### Add your own image
 
-### Set or change your own image
-
-1. Pick a JPG or PNG. Any size works: it is scaled down to about 1920 px wide when loaded. Photos with dark or
-   mid tones read best, because a dark overlay is added so the text stays legible.
-2. Create the folder (first time only) and copy the image to the TV, **named exactly `wallpaper.jpg`**:
-
-   ```bash
-   adb -s <tv-ip>:5555 shell mkdir -p /sdcard/Android/data/dev.tvlauncher/files
-   adb -s <tv-ip>:5555 push ~/path/to/photo.jpg /sdcard/Android/data/dev.tvlauncher/files/wallpaper.jpg
-   ```
-
-   A PNG can be pushed as `wallpaper.png` instead. The launcher looks for `wallpaper.jpg`, `wallpaper.jpeg`,
-   then `wallpaper.png`, in that order, so remove the older file if you switch formats.
-3. On the TV, open **Launcher settings** (leave and reopen it if it was already open, because the image is
-   only looked for when Settings opens) and press **Wallpaper** until it reads **Your image**.
-
-There is one image file for the whole TV: every profile that selects "Your image" shows the same picture.
-Profiles can still differ by using a preset instead.
-
-### Replace the image
-
-Push a new file to the same path. The launcher reads the file when the home screen opens, so go to Settings
-and back, or relaunch the launcher: `adb -s <tv-ip>:5555 shell am force-stop dev.tvlauncher`, then the
-`am start` command above.
-
-### Remove the image
+The TV has no file picker, so the launcher lists the images in its own folder. Copy any `.jpg`, `.jpeg` or `.png`
+there (any file name, any size; it is scaled to about 1920 px wide when loaded):
 
 ```bash
-adb -s <tv-ip>:5555 shell rm /sdcard/Android/data/dev.tvlauncher/files/wallpaper.jpg
+adb -s <tv-ip>:5555 shell mkdir -p /sdcard/Android/data/dev.tvlauncher/files
+adb -s <tv-ip>:5555 push ~/path/to/photo.jpg /sdcard/Android/data/dev.tvlauncher/files/
 ```
 
-A profile that was set to "Your image" then falls back to the first preset the next time Wallpaper is pressed
-and shows the Midnight gradient until then. Uninstalling the app also deletes the folder.
+Then open **Wallpaper > From TV storage**: every image in the folder is listed with its size. Several profiles can
+use the same file. To remove an image, `adb shell rm` it; a profile that used it falls back to Ink.
 
 ### Troubleshooting
 
-- **"Your image" never appears:** the file must be named `wallpaper.jpg` (or `.jpeg` / `.png`), be non-empty, and
-  sit in exactly `/sdcard/Android/data/dev.tvlauncher/files/`. Check with
-  `adb -s <tv-ip>:5555 shell ls -la /sdcard/Android/data/dev.tvlauncher/files`.
-- **The picture is blank or the gradient shows:** the file may not be a valid image. Try re-exporting it as JPG.
-- **Text is hard to read:** use a darker image; the overlay is fixed (see `WallpaperBackground` in
-  `app/src/main/java/dev/tvlauncher/Wallpaper.kt`).
+- **The image is not listed:** it must be a non-empty `.jpg`, `.jpeg` or `.png` directly in
+  `/sdcard/Android/data/dev.tvlauncher/files/`. Check with `adb -s <tv-ip>:5555 shell ls -la` on that folder, then
+  leave and reopen the list (it is read when the list opens).
 - **"adb: command not found":** use `/opt/homebrew/bin/adb` or add `/opt/homebrew/bin` to your PATH.
 
 ## Features
 
+- **Design:** the Ink & Iris design from Figma: a library sidebar (profile, Home, Search, one entry per row,
+  Launcher settings), banner cards, row headings with counts, a clock with the Wi-Fi indicator and date at the top
+  right, and toasts for confirmations. Fonts are Inter (OFL, `docs/licenses`).
 - **Rows:** Favorites, Recently used, Most used, your categories, Other apps, HDMI inputs and Quick settings.
-  Each row can be turned on or off per profile in Launcher settings.
-- **Long-press OK on an app:** open, add or remove favorite, add to or remove from a category, move left or
-  right within a row, rename, hide, app info.
-- **Search:** the Search button (top right) filters apps by name with the on-screen keyboard.
-- **Profiles:** each has its own clock and date options, categories, favorites, hidden apps, renames, usage,
-  wallpaper and row choices. Switch any time in Launcher settings, or choose "ask who's watching" at launch.
-- **Look:** gradient or custom wallpaper, three focus styles (scale, outline, glow), an optional dark dim mode that
-  follows the TV's light sensor.
-- **Back button:** on the home screen it shows a full-screen drifting clock (can be turned off).
+  Each can be turned on or off and **reordered per profile** (Launcher settings > Row order: OK picks a row up,
+  Up/Down moves it).
+- **Long-press OK on an app:** a panel on the right with open, add or remove favorite, add to a category (with ✓ for
+  the ones it is in), remove from categories, **Reorder in row** (Left/Right moves the app, OK saves, Back
+  cancels), rename, hide, app info.
+- **Search:** the Search entry in the sidebar filters apps by name with the on-screen keyboard.
+- **Profiles:** up to six, each with its own clock and date options, categories, favorites, hidden apps, renames,
+  usage, wallpaper, row choices and navigation-sound setting. Pick one from the profile name in the sidebar,
+  or choose "Ask who's watching" at launch; **Create new** is offered while there are fewer than six.
+- **Look:** wallpaper presets and photos, three focus styles (outline is the default, scale, glow), an optional dim
+  palette that follows the TV's light sensor, optional navigation clicks per profile.
+- **Hold Back on Home:** shows the full-screen clock (a short Back does nothing on Home).
+- **Errors:** if the saved settings cannot be read, Home shows "Configuration could not be read" with Try again,
+  Restore backup and Start fresh; nothing is overwritten until you choose. A failed save shows a toast and changes
+  nothing.
 
 ## Screensaver
 
-A dim, drifting clock that uses almost no memory. It is opt-in, and the TV's stock screensaver stays as it is
-until you switch:
+A drifting clock (180 px time, 30 px date, moves up to 24 px) that uses almost no memory. It uses the dim palette
+between 22:00 and 07:00 and can sit over the profile's wallpaper (Launcher settings > Screensaver wallpaper). It is
+opt-in; the TV's stock screensaver stays as it is until you switch:
 
 ```bash
 adb -s <tv-ip>:5555 shell settings put secure screensaver_components dev.tvlauncher/.ClockDreamService
@@ -104,12 +91,13 @@ adb -s <tv-ip>:5555 shell settings put secure screensaver_enabled 1
 To go back to the stock screensaver, first read the old value (`adb shell settings get secure screensaver_components`
 before changing it, and keep it), then put it back with `settings put secure screensaver_components <old value>`.
 The idle delay is the TV's own "Start now / Time" setting under Settings > Device Preferences > Screen saver.
+**Launcher settings > Preview screensaver** shows the in-app clock; the same clock opens with a long Back on Home.
 
 ## Backup and restore
 
-**Launcher settings > Back up settings to a file** writes `launcher-backup.json` to the app folder. Copy it off the
-TV with `adb pull /sdcard/Android/data/dev.tvlauncher/files/launcher-backup.json`, or push one back to the same
-path and use **Restore settings from backup** (it asks twice, and an invalid file never replaces your settings).
+**Launcher settings > Back up settings** writes `launcher-backup.json` to the app folder. Copy it off the TV with
+`adb pull /sdcard/Android/data/dev.tvlauncher/files/launcher-backup.json`, or push one back to the same path and
+use **Restore settings** (it asks first, and an invalid file never replaces your settings).
 
 ## Testing
 
@@ -119,7 +107,8 @@ layout, config storage, profile and app edits, the drift path and the dim and ne
 ## Configuration
 
 All settings (profiles, categories, hidden apps, clock, wallpaper choice) live in one JSON file in the app's
-private storage (`config.json`). It is rewritten atomically, and a missing or corrupt file falls back to defaults.
+private storage (`config.json`). It is rewritten atomically. A missing file means a first run (defaults); an
+unreadable one shows the error screen and is kept as `config.corrupt.json` if you start fresh.
 A debug build lets you read it with `adb shell run-as dev.tvlauncher cat files/config.json`.
 
 ## Becoming the Home app
