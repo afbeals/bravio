@@ -55,6 +55,7 @@ class HomeActions(
     val profiles: () -> Unit,
     val hidden: () -> Unit,
     val unhideAll: () -> Unit,
+    val tvSettings: () -> Unit,
 )
 
 private val FOCUS_ROOM = px(24)
@@ -119,6 +120,7 @@ fun HomeContent(
             onProfiles = actions.profiles,
             onRow = ::jumpTo,
             onSettings = actions.settings,
+            onTvSettings = actions.tvSettings,
             modifier = Modifier.padding(start = Ink.safeHorizontal, top = Ink.safeVertical),
         )
         Column(Modifier.fillMaxSize().padding(start = px(448), top = px(64), end = Ink.safeHorizontal)) {
@@ -243,6 +245,7 @@ fun Sidebar(
     onProfiles: () -> Unit,
     onRow: (Int) -> Unit,
     onSettings: () -> Unit,
+    onTvSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -262,6 +265,7 @@ fun Sidebar(
             }
         }
         InkButton("Launcher settings", onSettings, Modifier.fillMaxWidth(), style = style)
+        InkButton("TV settings", onTvSettings, Modifier.fillMaxWidth(), style = style)
     }
 }
 

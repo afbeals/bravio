@@ -73,6 +73,7 @@ fun SettingsScreen(
     onProfiles: () -> Unit,
     onSearch: () -> Unit,
     onPreviewClock: () -> Unit,
+    onTvSettings: () -> Unit,
     notify: (String, Boolean) -> Unit,
     onDone: () -> Unit,
 ) {
@@ -183,6 +184,7 @@ fun SettingsScreen(
             onProfiles = onProfiles,
             onRow = { onDone() },
             onSettings = {},
+            onTvSettings = onTvSettings,
             modifier = Modifier.padding(start = Ink.safeHorizontal, top = Ink.safeVertical),
         )
         Column(Modifier.fillMaxSize().padding(start = px(448), top = px(64))) {

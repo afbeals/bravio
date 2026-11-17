@@ -204,6 +204,8 @@ private fun Home(
     val dim = rememberDim(config.dimAtNight)
     val network = rememberNetworkState()
 
+    val tvSettings = { start(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+
     fun open(app: AppEntry) {
         update { it.updateActive { p -> p.recordLaunch(app.packageName) } }
         start(app.intent)
@@ -265,6 +267,7 @@ private fun Home(
                     onProfiles = { screen = Screen.Picker },
                     onSearch = { screen = Screen.Search },
                     onPreviewClock = { screen = Screen.Clock },
+                    onTvSettings = tvSettings,
                     notify = { text, error -> notify(text, error) },
                     update = ::update,
                     onHidden = { screen = Screen.Hidden },
@@ -359,6 +362,7 @@ private fun Home(
                             settings = { screen = Screen.Settings },
                             profiles = { screen = Screen.Picker },
                             hidden = { screen = Screen.Hidden },
+                            tvSettings = tvSettings,
                             unhideAll = { update { it.updateActive { p -> p.copy(hidden = emptySet()) } } },
                         ),
                     )
